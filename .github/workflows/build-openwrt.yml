@@ -8,7 +8,7 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: Build OpenWrt
+name: Build RT-AC1200GU OpenWrt
 
 on:
   repository_dispatch:
@@ -20,7 +20,7 @@ on:
         default: 'false'
 
 env:
-  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_URL: https://github.com/AK201314/lede.git
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: .config
@@ -61,20 +61,36 @@ jobs:
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    - name: Load custom feeds
+
+    - name: 读取自定义文件1
       run: |
         [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
         chmod +x $DIY_P1_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P1_SH
-
-    - name: Update feeds
+    - name: 拉取源码插件源
       run: cd openwrt && ./scripts/feeds update -a
-
-    - name: Install feeds
+      
+    - name: 增加常用插件
+      run: |
+        cd openwrt
+        echo >> feeds.conf.default
+        echo 'src-git nas https://github.com/linkease/nas-packages.git;master' >> feeds.conf.default
+        echo 'src-git nas_luci https://github.com/linkease/nas-packages-luci.git;main' >> feeds.conf.default
+        ./scripts/feeds update nas nas_luci
+        ./scripts/feeds install -a -p nas
+        ./scripts/feeds install -a -p nas_luci
+  
+        git clone https://github.com/small-5/luci-app-adblock-plus package/luci-app-adblock-plus
+        git clone https://github.com/fw876/helloworld package/luci-app-ssr-plus
+        git clone https://github.com/xiaorouji/openwrt-passwall package/luci-app-passwall
+        git clone https://github.com/wiwizcom/WiFiPortal package/wifidog-wiwiz
+        
+        
+    - name: 安装源码插件源
       run: cd openwrt && ./scripts/feeds install -a
-
-    - name: Load custom configuration
+      
+    - name: 读取自定义文件2
       run: |
         [ -e files ] && mv files openwrt/files
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
@@ -82,12 +98,41 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
+
+
+
+
+
+
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@v1.0.0
       if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
       env:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        
+      
+      
+        
+        
+    - name: 生成.config配置文件
+      run: |
+        cd openwrt
+        make defconfig
+        ./scripts/diffconfig.sh > ${GITHUB_WORKSPACE}/config.txt
+        
+    - name: 上传.config配置文件在 github actions
+      uses: actions/upload-artifact@v2
+      with:
+        name: .config
+        path: config.txt
+        
+        
+        
+        
+        
+        
+        
 
     - name: Download package
       id: package
